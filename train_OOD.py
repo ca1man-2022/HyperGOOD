@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import utils
 from tqdm import tqdm
 from preprocessing import *
-# from convert_datasets_to_pygDataset import dataset_Hypergraph
 from dataset_OOD import dataset_Hypergraph #, convert_hypergraph_to_graph
 
 from load_other_datasets import *
@@ -132,40 +131,33 @@ class GCNII(nn.Module):
         self.use_prop = use_prop
         
     def compute_energy(self, logits):
-        """计算能量分数"""
-        # energy = self.T * torch.logsumexp(logits / self.T, dim=-1)
         energy = - self.T * torch.logsumexp(logits / self.T, dim=-1)
         return energy
 
     def propagate_energy(self, energy, adj, prop_layers=4, alpha=0.5):
-        """超图能量传播"""
-        # 确保 adj 和 energy 在同一设备上
+        """SEP"""
+
         device = energy.device
         adj = adj.to(device)
         
-        # 获取节点数和超边数
         ne = adj.shape[1]
         nv = adj.shape[0]
         
-        # 初始化超边权重（假设所有超边的权重相同）
-        W = torch.ones(ne, dtype=torch.float32, device=device)  # 将 W 移动到与 adj 相同的设备
+        W = torch.ones(ne, dtype=torch.float32, device=device)  
         
-        # 将稀疏张量 adj 转换为稠密张量（如果稀疏性不高）
-        adj_dense = adj.to_dense()  # 将稀疏张量转换为稠密张量
+        adj_dense = adj.to_dense()  
         
-        # 计算节点度矩阵 D_v 和超边度矩阵 D_e
-        D_v = torch.sum(adj_dense * W, dim=1)  # 节点度矩阵
-        D_e = torch.sum(adj_dense, dim=0)  # 超边度矩阵
+        D_v = torch.sum(adj_dense * W, dim=1)  
+        D_e = torch.sum(adj_dense, dim=0)  
         
-        # 将 D_v 和 D_e 转换为对角矩阵
-        D_v = torch.diag(D_v)  # 节点度对角矩阵
-        D_e = torch.diag(D_e)  # 超边度对角矩阵
-        energy = energy.unsqueeze(1) # 将 energy 转换为列向量 [N, 1]
-        # 能量传播
+        D_v = torch.diag(D_v)  
+        D_e = torch.diag(D_e) 
+        energy = energy.unsqueeze(1)
+       
         for _ in range(prop_layers):
             energy = alpha * energy + (1 - alpha) * torch.spmm(D_v.inverse(), torch.spmm(adj_dense, torch.spmm(D_e.inverse(), torch.spmm(adj_dense.T, energy))))
     
-        return energy.squeeze(1)  # 将 energy 转换回行向量 [N]
+        return energy.squeeze(1)  
 
     def forward(self, x, adj, d_list):
         _layers = []
@@ -179,7 +171,6 @@ class GCNII(nn.Module):
         layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
         logits = self.fcs[-1](layer_inner)
         
-        # 计算能量分数
         energy = self.compute_energy(logits)
         if self.use_prop:
             energy = self.propagate_energy(energy, adj)
@@ -234,27 +225,24 @@ def evaluate(model, dataset_ind, dataset_ood_te, d_list, split_idx, eval_func):
     """
     model.eval()
     
-    device = next(model.parameters()).device  # 获取模型所在的设备
-    dataset_ood_te.x = dataset_ood_te.x.to(device)  # 将特征矩阵移到模型所在设备
+    device = next(model.parameters()).device 
+    dataset_ood_te.x = dataset_ood_te.x.to(device) 
     
-    # 评估 IND 数据集
     logits_ind, energy_ind = model(dataset_ind.x, adj, d_list)
     
     train_acc = eval_func(dataset_ind.y[split_idx['train']], logits_ind[split_idx['train']])
     valid_acc = eval_func(dataset_ind.y[split_idx['valid']], logits_ind[split_idx['valid']])
     test_acc = eval_func(dataset_ind.y[split_idx['test']], logits_ind[split_idx['test']])
 
-    # 评估 OOD 数据集
     logits_ood, energy_ood = model(dataset_ood_te.x, adj, d_list)
     
     # 合并 IND 和 OOD 数据集的能量分数
     energy_all = torch.cat([energy_ind, energy_ood], dim=0)
     labels_all = torch.cat([
-        torch.zeros_like(energy_ind),  # IND 数据集的标签为 0
-        torch.ones_like(energy_ood)    # OOD 数据集的标签为 1
+        torch.zeros_like(energy_ind), 
+        torch.ones_like(energy_ood)    
     ], dim=0)
     
-    # 计算 OOD 检测的性能指标（AUROC 和 AUPR）
     auroc = roc_auc_score(labels_all.cpu().numpy(), energy_all.cpu().numpy())
     aupr = average_precision_score(labels_all.cpu().numpy(), energy_all.cpu().numpy())
     
@@ -279,38 +267,21 @@ def setup_seed(seed):
     
 def loss_compute(model, dataset_ind, dataset_ood, criterion, device, args, split_idx, m_criterion = None, epoch=None):
     """计算损失函数，包括节点分类损失和能量正则化损失"""
-    # 将数据移动到 GPU
     dataset_ind.x = dataset_ind.x.to(device)
     dataset_ood.x = dataset_ood.x.to(device)
+
     
-    # # 节点分类损失
-    # logits_ind, energy_ind = model(dataset_ind.x, adj, d_list)
-    # logits_ood, energy_ood = model(dataset_ood.x, adj, d_list)
-    # sup_loss = criterion(logits_ind[dataset_ind.train_idx], dataset_ind.y[dataset_ind.train_idx])
+    train_idx = split_idx['train']  
+    ood_idx = dataset_ood.node_idx  
     
-    # 获取 IND 数据集的训练集索引
-    train_idx = split_idx['train']  # IND 训练集索引
-    ood_idx = dataset_ood.node_idx  # OOD 数据集索引
-    
-    # 节点分类损失
     logits_ind, energy_ind = model(dataset_ind.x, adj, d_list)
     sup_loss = criterion(logits_ind[train_idx], dataset_ind.y[train_idx])
-
-    # # 监督损失 Negative Log-Likelihood Loss, NLLLoss
-    # out, energy = model(x, adj, d_list)
-    # sup_loss = criterion(out[train_idx], data.y[train_idx])
     
     
-    # 能量正则化损失
+    # Energy reg
     if args.use_reg:
-        # 计算 IND 和 OOD 数据集的能量分数
         logits_ood, energy_ood = model(dataset_ood.x, adj, d_list)
-         # 对能量分数进行传播
-        # if args.use_prop:
-        #     energy_ind = model.propagate_energy(energy_ind, adj)
-        #     energy_ood = model.propagate_energy(energy_ood, adj)
-            
-        # 截取 IND 训练集和 OOD 数据集的能量分数
+
         energy_ind = energy_ind[train_idx]
         energy_ood = energy_ood[ood_idx]
         
@@ -533,9 +504,9 @@ if __name__ == '__main__':
                     use_prop=args.use_prop).to(device)
 
         L, adj = compute_L(H)
-        # 将数据都移到GPU上做运算
+
         x = x.to(device)
-        # 将 adj 转换为稀疏矩阵并移动到 GPU
+
         adj = torch.from_numpy(adj).to(torch.float32).to_sparse().to(device)  
         d_list = [d.to(device) for d in d_list]
         
@@ -551,18 +522,12 @@ if __name__ == '__main__':
         for epoch in range(args.epochs):
             model.train()
             optimizer.zero_grad()
-            
-            # 计算损失
-            # out, energy = model(x, adj, d_list)
-            # loss = criterion(out[train_idx], data.y[train_idx])
 
             loss = loss_compute(model, dataset_ind, dataset_ood_tr, criterion, device, args, split_idx, m_criterion=m_criterion, epoch=epoch)
-
             
             loss.backward()
             optimizer.step()
 
-            # 评估 IND 和 OOD 数据集
             result = evaluate(model, dataset_ind, dataset_ood_te, d_list, split_idx, eval_func)
             
             energy_ind_all = []
@@ -614,27 +579,19 @@ if __name__ == '__main__':
         write_obj.write(cur_line)
 
     # 保存 OOD 检测结果
-    # ood_filename = f'{res_root}/{args.dname}_noise_{args.feature_noise}_ood.csv'
-    # print(f"Saving OOD detection results to {ood_filename}")
-    # with open(ood_filename, 'a+') as write_obj:
-    #     cur_line = f'AUROC: {auroc_tensor.mean():.4f}, AUPR: {aupr_tensor.mean():.4f}\n'
-    #     write_obj.write(cur_line)
     ood_filename = f'{res_root}/{args.dname}_noise_{args.feature_noise}_ood.csv'
     print(f"Saving OOD detection results to {ood_filename}")
     with open(ood_filename, 'a+') as write_obj:
-        # 假设 auroc_tensor 和 aupr_tensor 是记录了所有验证阶段的 AUROC 和 AUPR 值的张量
-        best_auroc = auroc_tensor.max().item()  # 选择最佳 AUROC
-        best_aupr = aupr_tensor.max().item()   # 选择最佳 AUPR
+        best_auroc = auroc_tensor.max().item()  
+        best_aupr = aupr_tensor.max().item()   
         cur_line = f'Best AUROC: {best_auroc:.4f}, Best AUPR: {best_aupr:.4f}\n'
         write_obj.write(cur_line)
 
-    # 保存所有参数
     all_args_file = f'{res_root}/all_args_{args.dname}_noise_{args.feature_noise}.csv'
     with open(all_args_file, 'a+') as f:
         f.write(str(args))
         f.write('\n')
 
-    # 保存训练过程中的指标
     res_root_2 = './storage'
     if not osp.isdir(res_root_2):
         os.makedirs(res_root_2)
