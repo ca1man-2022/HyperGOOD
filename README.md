@@ -15,12 +15,14 @@ Out-of-distribution (OOD) detection plays a critical role in ensuring the robust
 
 
 ## Citation
-If you find our code and idea useful, please cite our work. Thank you!
-```python
+
+If you find this work useful, please consider citing our paper:
+
+```bibtex
 @inproceedings{cai2026hypergood,
     title = {HyperGOOD: Towards Out-of-Distribution in Hypergraphs},
     author = {Tingyi Cai and Yunliang Jiang and Ming Li and Changqin Huang and Yujie Fang and Chengling Gao and Zhonglong Zheng},
-    booktitle = {AAAI},
+    booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
     year = {2026}
     }
 ```
