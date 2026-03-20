@@ -1,6 +1,6 @@
 # HyperGOOD
 
-This is the official pytorch implementation of the paper "HyperGOOD: Towards Out-of-Distribution in Hypergraphs, in AAAI 2026".
+This is the official pytorch implementation of the paper [HyperGOOD: Towards Out-of-Distribution in Hypergraphs, in AAAI 2026](https://ojs.aaai.org/index.php/AAAI/article/view/39064).
 
 ![model](https://github.com/ca1man-2022/HyperGOOD/blob/main/cr_model.png)
 
@@ -23,6 +23,7 @@ If you find this work useful, please consider citing our paper:
     title = {HyperGOOD: Towards Out-of-Distribution in Hypergraphs},
     author = {Tingyi Cai and Yunliang Jiang and Ming Li and Changqin Huang and Yujie Fang and Chengling Gao and Zhonglong Zheng},
     booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
-    year = {2026}
+    year = {2026},
+    pages = {19817-19825}
     }
 ```
